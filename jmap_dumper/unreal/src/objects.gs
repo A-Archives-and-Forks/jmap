@@ -7,7 +7,7 @@ import unreal::properties::{
 import unreal::unreal::{
     FName, FString, STUB,
     FRepRecord, FImplementedInterface, FGCReferenceTokenStream,
-    FWindowsCriticalSection, FCriticalSection, FWindowsRWLock,
+    FWindowsCriticalSection, FCriticalSection, FRWLock,
     FNativeFunctionLookup, FTokenStreamOwner
 };
 
@@ -239,16 +239,16 @@ class UClass : UStruct,
         TMap<FName, UFunction*> ParentFuncMap;
         TMap<FName, UFunction*> InterfaceFuncMap;
     }
-    if (UE_VERSION >= 502) FWindowsRWLock FuncMapLock;
+    if (UE_VERSION >= 502) FRWLock FuncMapLock;
     if (UE_VERSION >= 418 && UE_VERSION < 503) {
         TMap<FName, UFunction*> SuperFuncMap;
-        if (UE_VERSION >= 421) FWindowsRWLock SuperFuncMapLock;
+        if (UE_VERSION >= 421) FRWLock SuperFuncMapLock;
     }
     if (UE_VERSION >= 503 && UE_VERSION < 508) {
         TMap<FName, UFunction*> AllFunctionsCache;
-        FWindowsRWLock AllFunctionsCacheLock;
+        FRWLock AllFunctionsCacheLock;
     } else if (UE_VERSION >= 508) {
-        FWindowsRWLock AllFunctionsCacheLock;
+        FRWLock AllFunctionsCacheLock;
         TMap<FName, UFunction*> AllFunctionsCache;
     }
 
