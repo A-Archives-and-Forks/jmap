@@ -822,8 +822,25 @@ impl Ptr<FChunkedFixedUObjectArray> {
             .struct_member("FChunkedFixedUObjectArray", "NumElements");
         self.byte_offset(offset).cast()
     }
+    pub fn max_elements(&self) -> Ptr<i32> {
+        let offset = self
+            .ctx()
+            .struct_member("FChunkedFixedUObjectArray", "MaxElements");
+        self.byte_offset(offset).cast()
+    }
+    pub fn max_chunks(&self) -> Ptr<i32> {
+        let offset = self
+            .ctx()
+            .struct_member("FChunkedFixedUObjectArray", "MaxChunks");
+        self.byte_offset(offset).cast()
+    }
+    pub async fn elements_per_chunk(&self) -> Result<usize> {
+        let max_elements = self.max_elements().read().await?;
+        let max_chunks = self.max_chunks().read().await?;
+        Ok((max_elements / max_chunks) as usize)
+    }
     pub async fn read_item_ptr(&self, item: usize) -> Result<Ptr<FUObjectItem>> {
-        let max_per_chunk = 64 * 1024;
+        let max_per_chunk = self.elements_per_chunk().await?;
         let chunk_index = item / max_per_chunk;
 
         Ok(self
