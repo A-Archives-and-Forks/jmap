@@ -180,6 +180,10 @@ impl Ptr<UObject> {
         let offset = self.ctx().struct_member("UObject", "ObjectFlags");
         self.byte_offset(offset).cast()
     }
+    pub fn internal_index(&self) -> Ptr<i32> {
+        let offset = self.ctx().struct_member("UObject", "InternalIndex");
+        self.byte_offset(offset).cast()
+    }
     pub fn class_private(&self) -> Ptr<Ptr<UClass>> {
         let offset = self.ctx().struct_member("UObject", "ClassPrivate");
         self.byte_offset(offset).cast()

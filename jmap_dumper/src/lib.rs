@@ -764,6 +764,18 @@ async fn dump_one(
         return Ok(None);
     }
 
+    let bad = match obj.internal_index().read().await {
+        Ok(index) => index as usize == i,
+        Err(_) => false,
+    };
+    if !bad {
+        eprintln!(
+            "WARN: skipping bad GUObjectArray entry {i}: {:#x}",
+            obj.address()
+        );
+        return Ok(None);
+    }
+
     let path = obj.path().await?;
 
     if options.verbose {
