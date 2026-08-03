@@ -96,8 +96,11 @@ struct STUB {};
 struct FRepRecord {
     uint32_t Placeholder;
 };
+/// TEST
 struct FImplementedInterface {
-    uint64_t Placeholder[2];
+    if (UE_VERSION >= 503) TObjectPtr<UClass> Class; else UClass* Class;
+    int32_t PointerOffset;
+    bool bImplementedByK2;
 };
 struct FGCReferenceTokenStream {
     uint64_t Placeholder1[2]; // TArray Tokens

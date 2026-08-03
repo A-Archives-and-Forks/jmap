@@ -267,6 +267,53 @@ impl Ptr<UClass> {
         let offset = self.ctx().struct_member("UClass", "ClassDefaultObject");
         self.byte_offset(offset).cast()
     }
+    pub fn interfaces(&self) -> Ptr<TArray<()>> {
+        let offset = self.ctx().struct_member("UClass", "Interfaces");
+        self.byte_offset(offset).cast()
+    }
+    pub async fn read_interfaces(&self) -> Result<Vec<(Option<Ptr<UClass>>, i32, bool)>> {
+        let len = self.interfaces().len().await?;
+        if len == 0 {
+            return Ok(vec![]);
+        }
+        let Some(data) = self.interfaces().data().await? else {
+            return Ok(vec![]);
+        };
+        let data: Ptr<FImplementedInterface> = data.cast();
+        let size = self.ctx().get_struct("FImplementedInterface").size as usize;
+
+        let mut interfaces = Vec::with_capacity(len);
+        for i in 0..len {
+            let elm = data.byte_offset(i * size);
+            interfaces.push((
+                elm.class().read().await?,
+                elm.pointer_offset().read().await?,
+                elm.implemented_by_k2().read().await? != 0,
+            ));
+        }
+        Ok(interfaces)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct FImplementedInterface;
+impl Ptr<FImplementedInterface> {
+    pub fn class(&self) -> Ptr<Option<Ptr<UClass>>> {
+        let offset = self.ctx().struct_member("FImplementedInterface", "Class");
+        self.byte_offset(offset).cast()
+    }
+    pub fn pointer_offset(&self) -> Ptr<i32> {
+        let offset = self
+            .ctx()
+            .struct_member("FImplementedInterface", "PointerOffset");
+        self.byte_offset(offset).cast()
+    }
+    pub fn implemented_by_k2(&self) -> Ptr<u8> {
+        let offset = self
+            .ctx()
+            .struct_member("FImplementedInterface", "bImplementedByK2");
+        self.byte_offset(offset).cast()
+    }
 }
 
 #[derive(Clone, Copy)]

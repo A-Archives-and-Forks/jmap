@@ -17,8 +17,8 @@ use containers::{FName, FScriptMap, FScriptSet, FString};
 use futures_util::StreamExt;
 use jmap::{
     BytePropertyValue, Class, EClassCastFlags, EObjectFlags, EngineVersion, Enum,
-    EnumPropertyValue, Function, Jmap, Metadata, Object, ObjectType, Package, Property,
-    PropertyType, PropertyValue, ScriptStruct, Struct,
+    EnumPropertyValue, Function, ImplementedInterface, Jmap, Metadata, Object, ObjectType, Package,
+    Property, PropertyType, PropertyValue, ScriptStruct, Struct,
 };
 use mem::{BlockCache, Ctx, MachoCoreMem, ProcessHandle, Ptr};
 use objects::FOptionalProperty;
@@ -1361,12 +1361,23 @@ pub async fn read_class(obj: &Ptr<UClass>) -> Result<Class> {
     let class_flags = obj.class_flags().read().await?;
     let class_cast_flags = obj.class_cast_flags().read().await?;
     let class_default_object = opt_path(obj.class_default_object().read().await?).await?;
+
+    let mut interfaces = vec![];
+    for (class, pointer_offset, implemented_by_k2) in obj.read_interfaces().await? {
+        interfaces.push(ImplementedInterface {
+            class: opt_path(class).await?,
+            pointer_offset,
+            implemented_by_k2,
+        });
+    }
+
     Ok(Class {
         r#struct: read_struct(&obj.cast()).await?,
         class_flags,
         class_cast_flags,
         class_default_object,
         instance_vtable: None,
+        interfaces,
     })
 }
 

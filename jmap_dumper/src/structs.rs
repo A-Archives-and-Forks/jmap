@@ -129,6 +129,7 @@ pub fn get_struct_info_for_version(
         ("containers", "FScriptMap"),
         ("unreal", "FName"),
         ("unreal", "FNameEntryAllocator"),
+        ("unreal", "FImplementedInterface"),
         ("properties", "FField"),
         ("properties", "FFieldClass"),
         ("properties", "FFieldVariant"),
