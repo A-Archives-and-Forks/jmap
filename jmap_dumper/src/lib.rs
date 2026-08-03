@@ -821,7 +821,7 @@ async fn dump_inner(mem: Ctx, source_name: &str, options: DumpOptions) -> Result
     } else {
         vtable::analyze_vtables(&mem, &mut objects).await
     };
-    
+
     let names = if options.names {
         Some(extract_fnames(&mem).await?)
     } else {
