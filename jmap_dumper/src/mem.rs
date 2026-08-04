@@ -239,8 +239,8 @@ impl MachoCoreMem {
         let ncmds = u32::from_le_bytes(mmap[16..20].try_into().unwrap()) as usize;
         let sizeofcmds = u32::from_le_bytes(mmap[20..24].try_into().unwrap()) as usize;
         if filetype != MH_CORE {
-            eprintln!(
-                "note: Mach-O filetype is {filetype} (expected {MH_CORE} = MH_CORE); proceeding anyway"
+            crate::warn!(
+                "Mach-O filetype is {filetype} (expected {MH_CORE} = MH_CORE); proceeding anyway"
             );
         }
 

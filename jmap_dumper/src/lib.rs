@@ -1,4 +1,5 @@
 pub mod containers;
+pub mod diag;
 mod header;
 pub mod mem;
 pub mod objects;
@@ -287,8 +288,6 @@ pub struct DumpOptions {
     pub all: bool,
     /// Dump FName table
     pub names: bool,
-    /// Print struct layouts before dumping
-    pub verbose: bool,
     /// Skip vtable analysis
     pub skip_vtables: bool,
     /// Skip all objects
@@ -317,7 +316,7 @@ async fn dump_async(
     options: DumpOptions,
 ) -> Result<Jmap> {
     let Source { mem, config, name } = open_source(input, overrides).await?;
-    let ctx = connect_manual(mem, config, struct_info, options.verbose).await?;
+    let ctx = connect_manual(mem, config, struct_info).await?;
     dump_inner(ctx, &name, options).await
 }
 
@@ -357,7 +356,7 @@ async fn open_dump(path: PathBuf, mut overrides: ConfigOverrides) -> Result<Sour
 
     if let Some(module) = overrides.module.clone() {
         let base = module_base_from_minidump(minidump, &module)?;
-        eprintln!("resolved module {module:?} to load address 0x{base:x}");
+        crate::info!("resolved module {module:?} to load address 0x{base:x}");
         if let Some(off) = overrides.fname_pool.as_mut() {
             *off += base;
         }
@@ -369,7 +368,7 @@ async fn open_dump(path: PathBuf, mut overrides: ConfigOverrides) -> Result<Sour
 
     if overrides.target_triplet.is_none() {
         if let Some(inferred) = target_triplet_from_minidump(minidump) {
-            eprintln!("inferred target {inferred:?} from minidump SystemInfo");
+            crate::info!("inferred target {inferred:?} from minidump SystemInfo");
             overrides.target_triplet = Some(inferred);
         }
     }
@@ -458,20 +457,13 @@ pub async fn connect_pid(pid: i32, struct_info: Option<Structs>) -> Result<Ctx> 
     let handle: ProcessHandle = ProcessHandle::new(pid);
     let mem = BlockCache::wrap(handle);
     let image = patternsleuth::process::external::read_image_from_pid(pid)?;
-    connect(mem, &image, ConfigOverrides::default(), struct_info, false).await
+    connect(mem, &image, ConfigOverrides::default(), struct_info).await
 }
 
 pub async fn connect_pid_live(pid: i32, struct_info: Option<Structs>) -> Result<Ctx> {
     let handle: ProcessHandle = ProcessHandle::new(pid);
     let image = patternsleuth::process::external::read_image_from_pid(pid)?;
-    connect(
-        handle,
-        &image,
-        ConfigOverrides::default(),
-        struct_info,
-        false,
-    )
-    .await
+    connect(handle, &image, ConfigOverrides::default(), struct_info).await
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -535,7 +527,7 @@ pub async fn resolve_config(
     overrides: &ConfigOverrides,
 ) -> Result<Config> {
     let results = resolve(image, Resolution::resolver())?;
-    println!("{results:X?}");
+    crate::info!("{results:X?}");
 
     let engine_version = overrides.engine_version.or_else(|| {
         results
@@ -641,17 +633,15 @@ pub async fn connect(
     image: &Image<'_>,
     overrides: ConfigOverrides,
     struct_info: Option<Structs>,
-    verbose: bool,
 ) -> Result<Ctx> {
     let config = resolve_config(&mem, image, &overrides).await?;
-    connect_manual(mem, config, struct_info, verbose).await
+    connect_manual(mem, config, struct_info).await
 }
 
 pub async fn connect_manual(
     mem: impl mem::Mem + 'static,
     config: Config,
     struct_info: Option<Structs>,
-    verbose: bool,
 ) -> Result<Ctx> {
     let engine_version = patternsleuth::resolvers::unreal::engine_version::EngineVersion {
         major: config.engine_version.0,
@@ -672,7 +662,7 @@ pub async fn connect_manual(
         })?
     };
 
-    if verbose {
+    if diag::is_verbose() {
         print_struct_layouts(&struct_info);
     }
 
@@ -713,8 +703,8 @@ fn insert_object(objects: &mut BTreeMap<String, ObjectType>, path: String, objec
             let existing = e.get();
             let prefer_new =
                 has_canonical_cdo(&path, &object) && !has_canonical_cdo(&path, existing);
-            eprintln!(
-                "WARN: path collision {path}: existing {}, new {}",
+            crate::warn!(
+                "path collision {path}: existing {}, new {}",
                 existing.get_object().address,
                 object.get_object().address,
             );
@@ -756,9 +746,7 @@ async fn dump_one(
         return Ok(None);
     };
 
-    if options.verbose {
-        eprintln!("[{i}/{num}] {0:#x}", obj.address());
-    }
+    crate::trace!("[{i}/{num}] {0:#x}", obj.address());
 
     if obj.vtable().address() == 0 {
         return Ok(None);
@@ -769,18 +757,13 @@ async fn dump_one(
         Err(_) => false,
     };
     if !bad {
-        eprintln!(
-            "WARN: skipping bad GUObjectArray entry {i}: {:#x}",
-            obj.address()
-        );
+        crate::warn!("skipping bad GUObjectArray entry {i}: {:#x}", obj.address());
         return Ok(None);
     }
 
     let path = obj.path().await?;
 
-    if options.verbose {
-        eprintln!("[{i}/{num}] {path}");
-    }
+    crate::trace!("[{i}/{num}] {path}");
 
     Ok(read_object_type(obj, &path, options)
         .await?

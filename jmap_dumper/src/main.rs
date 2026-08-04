@@ -1,8 +1,8 @@
 use anyhow::{Result, bail};
 use clap::{ArgGroup, Parser};
 use jmap::Jmap;
-use jmap_dumper::{ConfigOverrides, DumpOptions, Input, into_header, structs::Structs};
-use std::io::Cursor;
+use jmap_dumper::{ConfigOverrides, DumpOptions, Input, diag, into_header, structs::Structs};
+use std::io::{Cursor, Write};
 use std::{collections::BTreeMap, fs::File, io::BufWriter, path::PathBuf};
 
 #[derive(Parser, Debug)]
@@ -75,9 +75,13 @@ struct Cli {
     #[arg(long)]
     names: bool,
 
-    /// Print struct layouts before dumping
-    #[arg(long, short = 'v')]
-    verbose: bool,
+    /// Verbosity
+    #[arg(long, short = 'v', action = clap::ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
+
+    /// Suppress warnings and the summary line; only errors are printed
+    #[arg(long, short = 'q')]
+    quiet: bool,
 
     /// Skip vtables
     #[arg(long)]
@@ -87,9 +91,21 @@ struct Cli {
     #[arg(long)]
     skip_objects: bool,
 
-    /// Output dump .jmap path
+    /// Output format (default: inferred from the output file extension, else jmap)
+    #[arg(long, value_enum)]
+    format: Option<OutputFormat>,
+
+    /// Output dump path (.jmap, .jmap.gz, .usmap, .h/.hpp), or `-` for stdout
     #[arg(index = 1)]
     output: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+enum OutputFormat {
+    Jmap,
+    JmapGz,
+    Usmap,
+    Header,
 }
 
 fn parse_hex_u64(s: &str) -> Result<u64, String> {
@@ -112,19 +128,22 @@ fn parse_engine_version(s: &str) -> Result<(u16, u16), String> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    enum OutputType {
-        Jmap,
-        JmapGz,
-        Usmap,
-        Header,
-    }
+    diag::set_verbosity(match (cli.quiet, cli.verbose) {
+        (true, _) => diag::Verbosity::Quiet,
+        (_, 0) => diag::Verbosity::Normal,
+        (_, 1) => diag::Verbosity::Verbose,
+        _ => diag::Verbosity::Trace,
+    });
 
-    let output_type = match cli.output.file_name().and_then(|e| e.to_str()) {
-        Some(n) if n.ends_with(".jmap") => OutputType::Jmap,
-        Some(n) if n.ends_with(".jmap.gz") => OutputType::JmapGz,
-        Some(n) if n.ends_with(".usmap") => OutputType::Usmap,
-        Some(n) if n.ends_with(".h") || n.ends_with(".hpp") => OutputType::Header,
-        _ => bail!("Error: Expected .jmap, .jmap.gz, .usmap, or .hpp output type"),
+    let to_stdout = cli.output.as_os_str() == "-";
+
+    let format = match (cli.format, cli.output.file_name().and_then(|e| e.to_str())) {
+        (Some(format), _) => format,
+        (None, Some(n)) if n.ends_with(".jmap.gz") => OutputFormat::JmapGz,
+        (None, Some(n)) if n.ends_with(".jmap") => OutputFormat::Jmap,
+        (None, Some(n)) if n.ends_with(".usmap") => OutputFormat::Usmap,
+        (None, Some(n)) if n.ends_with(".h") || n.ends_with(".hpp") => OutputFormat::Header,
+        _ => OutputFormat::Jmap,
     };
 
     let struct_info: Option<Structs> = if let Some(path) = cli.struct_info {
@@ -136,7 +155,6 @@ fn main() -> Result<()> {
     let options = DumpOptions {
         all: cli.all,
         names: cli.names,
-        verbose: cli.verbose,
         skip_vtables: cli.skip_vtables,
         skip_objects: cli.skip_objects,
     };
@@ -176,32 +194,62 @@ fn main() -> Result<()> {
         unreachable!();
     };
 
-    match output_type {
-        OutputType::Jmap => {
-            let mut file = BufWriter::new(File::create(&cli.output)?);
-            serde_json::to_writer_pretty(&mut file, &reflection_data)?;
+    let stdout = std::io::stdout();
+    let mut out: BufWriter<Box<dyn Write>> = BufWriter::new(if to_stdout {
+        Box::new(stdout.lock())
+    } else {
+        Box::new(File::create(&cli.output)?)
+    });
+
+    match format {
+        OutputFormat::Jmap => {
+            serde_json::to_writer_pretty(&mut out, &reflection_data)?;
         }
-        OutputType::JmapGz => {
-            let mut file = BufWriter::new(File::create(&cli.output)?);
-            let mut e = flate2::write::GzEncoder::new(&mut file, flate2::Compression::default());
+        OutputFormat::JmapGz => {
+            let mut e = flate2::write::GzEncoder::new(&mut out, flate2::Compression::default());
             serde_json::to_writer_pretty(&mut e, &reflection_data)?;
             e.finish()?;
         }
-        OutputType::Usmap => {
-            let usmap = into_usmap(&reflection_data);
-            usmap.write(&mut std::io::BufWriter::new(std::fs::File::create(
-                &cli.output,
-            )?))?;
+        OutputFormat::Usmap => {
+            into_usmap(&reflection_data).write(&mut out)?;
         }
-        OutputType::Header => {
-            let header = into_header(&reflection_data);
-            std::fs::write(&cli.output, header)?;
+        OutputFormat::Header => {
+            out.write_all(into_header(&reflection_data).as_bytes())?;
+        }
+    }
+    out.flush()?;
+
+    if !cli.quiet {
+        // keep the data stream on stdout clean when that's where the dump went
+        let summary = summary(&reflection_data);
+        if to_stdout {
+            eprintln!("{summary}");
+        } else {
+            println!("{summary}");
         }
     }
 
-    println!("Success! Output written to {}", cli.output.display());
-
     Ok(())
+}
+
+fn summary(jmap: &Jmap) -> String {
+    let mut parts = vec![];
+    if let Some(meta) = &jmap.metadata {
+        parts.push(format!(
+            "UE {}.{}",
+            meta.engine_version.major, meta.engine_version.minor
+        ));
+        if let Some(cl) = &meta.build_change_list {
+            parts.push(cl.clone());
+        }
+    }
+    parts.push(format!("{} objects", jmap.objects.len()));
+    parts.push(format!("{} vtables", jmap.vtables.len()));
+    let warnings = diag::warning_count();
+    if warnings > 0 {
+        parts.push(format!("{warnings} warnings"));
+    }
+    parts.join(" ")
 }
 
 fn obj_name(path: &str) -> &str {
