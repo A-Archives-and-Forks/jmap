@@ -397,9 +397,15 @@ impl Ptr<FNameData> {
 impl Ptr<UEnum> {
     pub async fn read_names(&self) -> Result<Vec<(String, i64)>> {
         let version = self.ctx().ue_version();
+        let uenum = self.ctx().get_struct("UEnum");
+        let off = |n: &str| uenum.members.iter().find(|m| m.name == n).map(|m| m.offset);
+        let names_size = match (off("Names"), off("CppForm")) {
+            (Some(a), Some(b)) => b - a,
+            _ => 0,
+        };
 
-        if version >= (5, 7) {
-            // UE 5.7+: FNameData
+        if names_size >= 24 {
+            // FNameData
             let name_data: Ptr<FNameData> = self.names().cast();
             let len = name_data.num_values().read().await? as usize;
             if len == 0 {

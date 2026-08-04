@@ -476,9 +476,7 @@ pub struct Config {
     #[serde(default)]
     pub build_change_list: Option<String>,
     #[serde(default)]
-    pub case_preserving: bool,
-    #[serde(default)]
-    pub pack_fuobject_item: bool,
+    pub build_config: structs::BuildConfig,
     #[serde(default = "structs::default_target_triplet")]
     pub target_triplet: structs::TargetTriplet,
 }
@@ -490,8 +488,7 @@ pub struct ConfigOverrides {
     pub engine_version: Option<(u16, u16)>,
     pub image_base: Option<u64>,
     pub build_change_list: Option<String>,
-    pub case_preserving: Option<bool>,
-    pub pack_fuobject_item: Option<bool>,
+    pub build_config: structs::BuildConfig,
     /// Target triple: `None` defaults to win64 MSVC
     pub target_triplet: Option<structs::TargetTriplet>,
     /// Module name to resolve `fname_pool`/`guobject_array` as RVA offsets against
@@ -506,8 +503,7 @@ impl ConfigOverrides {
             engine_version: self.engine_version?,
             image_base: self.image_base.unwrap_or(0),
             build_change_list: self.build_change_list,
-            case_preserving: self.case_preserving.unwrap_or(false),
-            pack_fuobject_item: self.pack_fuobject_item.unwrap_or(false),
+            build_config: self.build_config,
             target_triplet: self
                 .target_triplet
                 .unwrap_or_else(structs::default_target_triplet),
@@ -568,10 +564,11 @@ pub async fn resolve_config(
     let guobject_array = guobject_array.unwrap();
     let fname_pool = fname_pool.unwrap();
 
-    let case_preserving = match overrides.case_preserving {
-        Some(cp) => cp,
-        None => detect_case_preserving(mem, &results, engine_version).await?,
-    };
+    let mut build_config = overrides.build_config;
+    if !build_config.case_preserving {
+        build_config.case_preserving =
+            detect_case_preserving(mem, &results, engine_version).await?;
+    }
 
     Ok(Config {
         guobject_array,
@@ -582,8 +579,7 @@ pub async fn resolve_config(
             .build_change_list
             .clone()
             .or_else(|| results.build.as_ref().ok().map(|cl| cl.0.clone())),
-        case_preserving,
-        pack_fuobject_item: overrides.pack_fuobject_item.unwrap_or(false),
+        build_config,
         target_triplet: overrides
             .target_triplet
             .unwrap_or_else(structs::default_target_triplet),
@@ -653,8 +649,7 @@ pub async fn connect_manual(
     } else {
         structs::get_struct_info_for_version(
             &engine_version,
-            config.case_preserving,
-            config.pack_fuobject_item,
+            config.build_config,
             config.target_triplet,
         )
         .with_context(|| {
@@ -675,7 +670,7 @@ pub async fn connect_manual(
             .map(|s| (s.name.clone(), s))
             .collect(),
         version: config.engine_version,
-        case_preserving: config.case_preserving,
+        build_config: config.build_config,
         uobjectarray: config.guobject_array,
         image_base_address: config.image_base,
         build_change_list: config.build_change_list,

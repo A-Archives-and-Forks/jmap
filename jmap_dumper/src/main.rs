@@ -59,6 +59,18 @@ struct Cli {
     #[arg(long)]
     pack_fuobject_item: bool,
 
+    /// Editor build: sets UE_EDITOR, WITH_EDITOR and WITH_EDITORONLY_DATA
+    #[arg(long)]
+    editor: bool,
+
+    /// Build has stats enabled (STATS): any non-shipping/test target, editor or not
+    #[arg(long)]
+    stats: bool,
+
+    /// Build has FUObjectItem Flags+RefCount
+    #[arg(long)]
+    fuobject_flags_refcount: bool,
+
     /// Target triple for struct layout, e.g. aarch64-linux-android (defaults to x86_64-pc-windows-msvc)
     #[arg(long, value_parser = jmap_dumper::structs::parse_target_triplet, value_name = "TRIPLE")]
     target: Option<jmap_dumper::structs::TargetTriplet>,
@@ -165,10 +177,17 @@ fn main() -> Result<()> {
         engine_version: cli.engine_version,
         image_base: cli.image_base,
         build_change_list: cli.build_changelist.clone(),
-        // Presence of the flag forces case-preserving on; absence means auto-detect via the memory probe.
-        case_preserving: cli.case_preserving.then_some(true),
-        // Presence forces packing on; absence leaves the default (off).
-        pack_fuobject_item: cli.pack_fuobject_item.then_some(true),
+        build_config: jmap_dumper::structs::BuildConfig {
+            case_preserving: cli.case_preserving,
+            pack_fuobject_item: cli.pack_fuobject_item,
+            stats: cli.stats,
+            fuobject_flags_refcount: cli.fuobject_flags_refcount,
+            ..if cli.editor {
+                jmap_dumper::structs::BuildConfig::editor()
+            } else {
+                Default::default()
+            }
+        },
         target_triplet: cli.target,
         module: cli.module.clone(),
     };

@@ -442,7 +442,7 @@ pub struct CtxInner {
     pub fnamepool: u64,
     pub structs: HashMap<String, StructInfo>,
     pub version: (u16, u16),
-    pub case_preserving: bool,
+    pub build_config: crate::structs::BuildConfig,
     pub uobjectarray: u64,
     pub image_base_address: u64,
     pub build_change_list: Option<String>,
