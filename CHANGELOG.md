@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## v0.2.0 - 2026-08-04
+
 ### Android/macOS platform support
 - **macOS Mach-O core dumps** via `--macho-core` (3e998e0)
 - **Non-Windows minidumps** - Linux/Android-produced minidumps are now supported (b135636)
