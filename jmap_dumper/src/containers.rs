@@ -375,8 +375,13 @@ pub async fn extract_fnames(ctx: &Ctx) -> Result<BTreeMap<u32, String>> {
 pub struct FScriptArray;
 impl Ptr<FScriptArray> {
     pub fn data(&self) -> Ptr<Option<Ptr<u8>>> {
-        let offset = self.ctx().struct_member("FScriptArray", "Data");
-        self.byte_offset(offset).cast()
+        let alloc_offset = self
+            .ctx()
+            .struct_member("FScriptArray", "AllocatorInstance");
+        let data_offset = self
+            .ctx()
+            .struct_member("FDefaultAllocatorInstance", "Data");
+        self.byte_offset(alloc_offset + data_offset).cast()
     }
     pub fn num(&self) -> Ptr<i32> {
         let offset = self.ctx().struct_member("FScriptArray", "ArrayNum");

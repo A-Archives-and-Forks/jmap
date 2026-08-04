@@ -121,6 +121,7 @@ pub fn get_struct_info_for_version(
         ("properties", "FScriptSparseArrayLayout"),
         ("properties", "FScriptSetLayout"),
         ("properties", "FScriptMapLayout"),
+        ("containers", "FDefaultAllocatorInstance"),
         ("containers", "FDefaultBitArrayAllocator"),
         ("containers", "FScriptArray"),
         ("containers", "FScriptBitArray"),
